@@ -2,11 +2,13 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>CountryMeter Globe</title>
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Cesium.js"></script>
-  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Widgets/widgets.css" />
+  <link rel="stylesheet"
+        href="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Widgets/widgets.css" />
 
   <style>
     html, body, #cesiumContainer {
@@ -14,17 +16,31 @@
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: #090d18;
+      background: #070a12;
     }
 
     .cesium-viewer-bottom {
       font-size: 10px;
+    }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      pointer-events: none;
+      background: rgba(7, 10, 18, 0.25);
+      z-index: 10;
     }
   </style>
 </head>
 
 <body>
   <div id="cesiumContainer"></div>
+  <div id="loading">Ülke sınırları yükleniyor…</div>
 
   <script>
     const viewer = new Cesium.Viewer("cesiumContainer", {
@@ -43,19 +59,49 @@
       requestRenderMode: false
     });
 
-    viewer.imageryLayers.addImageryProvider(
-      new Cesium.OpenStreetMapImageryProvider({
-        url: "https://tile.openstreetmap.org/"
-      })
-    );
+    // Etiketli yol haritasını tamamen kaldır.
+    viewer.imageryLayers.removeAll();
 
+    // Sade CountryMeter görünümü.
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#242b33");
     viewer.scene.globe.enableLighting = true;
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#090d18");
+    viewer.scene.globe.showGroundAtmosphere = true;
+    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#070a12");
     viewer.scene.moon.show = false;
     viewer.scene.fog.enabled = true;
 
     viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(30, 25, 18000000)
+    });
+
+    const countriesUrl =
+      "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
+
+    Cesium.GeoJsonDataSource.load(countriesUrl, {
+      stroke: Cesium.Color.fromCssColorString("#89929b"),
+      strokeWidth: 1.2,
+      fill: Cesium.Color.fromCssColorString("#555e66").withAlpha(0.92),
+      clampToGround: true
+    }).then((dataSource) => {
+      viewer.dataSources.add(dataSource);
+
+      // Polygonların tamamını sade gri yap; sınırları açık tut.
+      for (const entity of dataSource.entities.values) {
+        if (entity.polygon) {
+          entity.polygon.material =
+            Cesium.Color.fromCssColorString("#555e66").withAlpha(0.92);
+          entity.polygon.outline = true;
+          entity.polygon.outlineColor =
+            Cesium.Color.fromCssColorString("#9aa3ab");
+          entity.polygon.outlineWidth = 1;
+        }
+      }
+
+      document.getElementById("loading").style.display = "none";
+    }).catch((error) => {
+      console.error("GeoJSON yüklenemedi:", error);
+      document.getElementById("loading").textContent =
+        "Ülke sınırları yüklenemedi.";
     });
 
     let autoRotate = true;
