@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>CountryMeter Globe v8</title>
+  <title>CountryMeter Globe v9</title>
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Cesium.js"></script>
   <link rel="stylesheet"
@@ -16,7 +16,7 @@
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: #070a12;
+      background: #06111f;
       font-family: Arial, sans-serif;
     }
 
@@ -76,10 +76,11 @@
   </div>
 
   <script>
-    const DEFAULT_COLOR = Cesium.Color.fromCssColorString("#59636c");
-    const VISITED_COLOR = Cesium.Color.fromCssColorString("#22c55e");
-    const HOVER_COLOR = Cesium.Color.fromCssColorString("#7b8792");
-    const BORDER_COLOR = Cesium.Color.fromCssColorString("#d6dde3");
+    const OCEAN_COLOR = Cesium.Color.fromCssColorString("#176B87");
+    const DEFAULT_COLOR = Cesium.Color.fromCssColorString("#68727C");
+    const VISITED_COLOR = Cesium.Color.fromCssColorString("#20C05C");
+    const HOVER_COLOR = Cesium.Color.fromCssColorString("#9AA6B2");
+    const BORDER_COLOR = Cesium.Color.fromCssColorString("#E4E9ED");
 
     const urlParams = new URLSearchParams(window.location.search);
     const visitedCodes = new Set(
@@ -106,9 +107,9 @@
     });
 
     viewer.imageryLayers.removeAll();
-    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#1e252c");
+    viewer.scene.globe.baseColor = OCEAN_COLOR;
     viewer.scene.globe.enableLighting = false;
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#070a12");
+    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#06111f");
     viewer.scene.moon.show = false;
     viewer.scene.fog.enabled = true;
 
@@ -131,6 +132,13 @@
       return "";
     }
 
+    function getCountryName(entity) {
+      return String(getProp(entity, [
+        "NAME_TR", "ADMIN", "NAME_LONG", "NAME",
+        "name_tr", "admin", "name_long", "name"
+      ]) || "Bilinmeyen ülke");
+    }
+
     function getCodeCandidates(entity) {
       const values = [
         getProp(entity, ["ISO_A2", "iso_a2"]),
@@ -149,24 +157,19 @@
       return getCodeCandidates(entity)[0] || "";
     }
 
-    function getCountryName(entity) {
-      const raw = getProp(entity, [
-        "NAME_TR", "ADMIN", "NAME_LONG", "NAME",
-        "name_tr", "admin", "name_long", "name"
-      ]);
-      return String(raw || "Bilinmeyen ülke");
-    }
-
     function isVisited(entity) {
       return getCodeCandidates(entity).some(code => visitedCodes.has(code));
+    }
+
+    function setMaterial(entity, color) {
+      entity.polygon.fill = true;
+      entity.polygon.material = new Cesium.ColorMaterialProperty(color);
     }
 
     function applyEntityStyle(entity) {
       if (!entity || !entity.polygon) return;
 
-      entity.polygon.fill = true;
-      entity.polygon.material =
-        isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR;
+      setMaterial(entity, isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR);
       entity.polygon.outline = true;
       entity.polygon.outlineColor = BORDER_COLOR;
       entity.polygon.outlineWidth = 1.5;
@@ -176,9 +179,6 @@
       "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
 
     Cesium.GeoJsonDataSource.load(countriesUrl, {
-      stroke: BORDER_COLOR,
-      strokeWidth: 1.5,
-      fill: DEFAULT_COLOR,
       clampToGround: false
     }).then((dataSource) => {
       viewer.dataSources.add(dataSource);
@@ -186,8 +186,7 @@
       for (const entity of dataSource.entities.values) {
         if (!entity.polygon) continue;
 
-        // v4'te çalışan geometri yapısını aynen koruyoruz.
-        entity.polygon.height = 15000;
+        entity.polygon.height = 20000;
         entity.polygon.closeTop = true;
         entity.polygon.closeBottom = true;
         applyEntityStyle(entity);
@@ -234,7 +233,7 @@
       hoveredEntity = entity && entity.polygon ? entity : null;
 
       if (hoveredEntity && hoveredEntity !== selectedEntity) {
-        hoveredEntity.polygon.material = HOVER_COLOR;
+        setMaterial(hoveredEntity, HOVER_COLOR);
         hoverLabel.textContent = getCountryName(hoveredEntity);
         hoverLabel.style.display = "block";
         hoverLabel.style.left = movement.endPosition.x + "px";
