@@ -37,9 +37,6 @@
       right: 12px;
       bottom: 12px;
       display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
       padding: 12px 14px;
       border-radius: 14px;
       background: rgba(20, 25, 31, 0.96);
@@ -50,18 +47,6 @@
 
     #countryName { font-size: 16px; font-weight: 700; }
     #countryCode { margin-top: 3px; font-size: 12px; opacity: 0.68; }
-
-    #visitButton {
-      border: 0;
-      border-radius: 10px;
-      padding: 10px 14px;
-      background: #22c55e;
-      color: white;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    #visitButton.visited { background: #3f4852; }
 
     #hoverLabel {
       position: fixed;
@@ -86,37 +71,23 @@
   <div id="hoverLabel"></div>
 
   <div id="countryCard">
-    <div>
-      <div id="countryName">Ülke</div>
-      <div id="countryCode"></div>
-    </div>
-    <button id="visitButton">Gittim</button>
+    <div id="countryName">Ülke</div>
+    <div id="countryCode"></div>
   </div>
 
   <script>
     const DEFAULT_COLOR = Cesium.Color.fromCssColorString("#59636c");
     const VISITED_COLOR = Cesium.Color.fromCssColorString("#22c55e");
     const HOVER_COLOR = Cesium.Color.fromCssColorString("#7b8792");
-    const BORDER_COLOR = Cesium.Color.fromCssColorString("#c3cbd2");
+    const BORDER_COLOR = Cesium.Color.fromCssColorString("#d6dde3");
 
     const urlParams = new URLSearchParams(window.location.search);
-    const urlCodes = (urlParams.get("visited") || "")
-      .split(",")
-      .map(code => code.trim().toUpperCase())
-      .filter(Boolean);
-
-    const storedCodes = JSON.parse(
-      localStorage.getItem("countrymeterVisitedCodes") || "[]"
+    const visitedCodes = new Set(
+      (urlParams.get("visited") || "")
+        .split(",")
+        .map(code => code.trim().toUpperCase())
+        .filter(Boolean)
     );
-
-    const visitedCodes = new Set([...storedCodes, ...urlCodes]);
-
-    function saveVisitedCodes() {
-      localStorage.setItem(
-        "countrymeterVisitedCodes",
-        JSON.stringify([...visitedCodes])
-      );
-    }
 
     const viewer = new Cesium.Viewer("cesiumContainer", {
       animation: false,
@@ -137,6 +108,7 @@
     viewer.imageryLayers.removeAll();
     viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#1e252c");
     viewer.scene.globe.enableLighting = false;
+    viewer.scene.globe.depthTestAgainstTerrain = false;
     viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#070a12");
     viewer.scene.moon.show = false;
     viewer.scene.fog.enabled = true;
@@ -162,8 +134,8 @@
 
     function getCountryCode(entity) {
       const raw = getProp(entity, [
-        "ADM0_A3", "ISO_A3", "SOV_A3", "GU_A3",
-        "adm0_a3", "iso_a3", "sov_a3", "gu_a3"
+        "ISO_A2", "ADM0_A3", "ISO_A3", "SOV_A3", "GU_A3",
+        "iso_a2", "adm0_a3", "iso_a3", "sov_a3", "gu_a3"
       ]);
       return String(raw || "").toUpperCase();
     }
@@ -182,17 +154,17 @@
 
     function setMaterial(entity, color) {
       if (!entity || !entity.polygon) return;
+      entity.polygon.fill = new Cesium.ConstantProperty(true);
       entity.polygon.material = new Cesium.ColorMaterialProperty(color);
     }
 
     function applyEntityStyle(entity) {
       if (!entity || !entity.polygon) return;
+
       setMaterial(entity, isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR);
       entity.polygon.outline = new Cesium.ConstantProperty(true);
-      entity.polygon.outlineColor =
-        new Cesium.ConstantProperty(BORDER_COLOR);
-      entity.polygon.outlineWidth =
-        new Cesium.ConstantProperty(1.5);
+      entity.polygon.outlineColor = new Cesium.ConstantProperty(BORDER_COLOR);
+      entity.polygon.outlineWidth = new Cesium.ConstantProperty(1.5);
     }
 
     const countriesUrl =
@@ -205,9 +177,11 @@
 
       for (const entity of dataSource.entities.values) {
         if (!entity.polygon) continue;
-        entity.polygon.height = new Cesium.ConstantProperty(15000);
+
+        entity.polygon.height = new Cesium.ConstantProperty(30000);
+        entity.polygon.extrudedHeight = new Cesium.ConstantProperty(30000);
         entity.polygon.closeTop = new Cesium.ConstantProperty(true);
-        entity.polygon.closeBottom = new Cesium.ConstantProperty(true);
+        entity.polygon.closeBottom = new Cesium.ConstantProperty(false);
         applyEntityStyle(entity);
       }
 
@@ -240,7 +214,6 @@
     const countryCard = document.getElementById("countryCard");
     const countryName = document.getElementById("countryName");
     const countryCode = document.getElementById("countryCode");
-    const visitButton = document.getElementById("visitButton");
 
     handler.setInputAction((movement) => {
       const picked = viewer.scene.pick(movement.endPosition);
@@ -280,39 +253,8 @@
       selectedEntity = entity;
       countryName.textContent = getCountryName(entity);
       countryCode.textContent = getCountryCode(entity);
-
-      const alreadyVisited = isVisited(entity);
-      visitButton.textContent = alreadyVisited ? "Gidildi" : "Gittim";
-      visitButton.classList.toggle("visited", alreadyVisited);
-      countryCard.style.display = "flex";
+      countryCard.style.display = "block";
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-
-    visitButton.addEventListener("click", () => {
-      if (!selectedEntity) return;
-
-      const code = getCountryCode(selectedEntity);
-      if (!code) return;
-
-      if (visitedCodes.has(code)) {
-        visitedCodes.delete(code);
-      } else {
-        visitedCodes.add(code);
-      }
-
-      saveVisitedCodes();
-      applyEntityStyle(selectedEntity);
-
-      const alreadyVisited = visitedCodes.has(code);
-      visitButton.textContent = alreadyVisited ? "Gidildi" : "Gittim";
-      visitButton.classList.toggle("visited", alreadyVisited);
-
-      window.parent.postMessage({
-        type: "countryVisitedChanged",
-        countryCode: code,
-        countryName: getCountryName(selectedEntity),
-        visited: alreadyVisited
-      }, "*");
-    });
   </script>
 </body>
 </html>
