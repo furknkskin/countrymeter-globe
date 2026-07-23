@@ -158,8 +158,16 @@
     }
 
     function isVisited(entity) {
-      return getCodeCandidates(entity).some(code => visitedCodes.has(code));
-    }
+      const codes = getCodeCandidates(entity);
+
+  console.log(
+    getCountryName(entity),
+    codes,
+    codes.some(code => visitedCodes.has(code))
+  );
+
+  return codes.some(code => visitedCodes.has(code));
+}
 
     function setMaterial(entity, color) {
       entity.polygon.fill = true;
