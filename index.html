@@ -186,9 +186,6 @@
       for (const entity of dataSource.entities.values) {
         if (!entity.polygon) continue;
 
-        entity.polygon.height = 20000;
-        entity.polygon.closeTop = true;
-        entity.polygon.closeBottom = true;
         applyEntityStyle(entity);
       }
 
