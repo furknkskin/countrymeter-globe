@@ -1,300 +1,314 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>CountryMeter Globe</title>
+  <title>CountryMeter Globe v2</title>
 
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Cesium.js"></script>
-  <link rel="stylesheet"
-        href="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Widgets/widgets.css" />
+  <!-- Globe.gl: Three.js/WebGL tabanlı, Cesium'dan bağımsız yeni sürüm -->
+  <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.46.1/dist/globe.gl.min.js"></script>
 
   <style>
-    html, body, #cesiumContainer {
+    :root {
+      --ocean: #176b87;
+      --land: #68727c;
+      --visited: #20c05c;
+      --hover: #9aa6b2;
+      --border: rgba(255, 255, 255, 0.9);
+      --panel: rgba(16, 22, 29, 0.94);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
       width: 100%;
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: #06111f;
-      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(255,255,255,.9) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 73% 31%, rgba(255,255,255,.7) 0 1px, transparent 1.6px),
+        radial-gradient(circle at 42% 78%, rgba(255,255,255,.65) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 86% 74%, rgba(255,255,255,.8) 0 1px, transparent 1.6px),
+        radial-gradient(circle at 55% 12%, rgba(255,255,255,.55) 0 1px, transparent 1.5px),
+        #05080d;
+      background-size: 180px 180px, 230px 230px, 270px 270px, 310px 310px, 350px 350px;
+      font-family: Inter, Arial, sans-serif;
+      color: #fff;
+      touch-action: none;
+    }
+
+    #globe {
+      position: fixed;
+      inset: 0;
     }
 
     #loading {
       position: fixed;
       inset: 0;
+      z-index: 20;
       display: grid;
       place-items: center;
-      color: white;
+      background: rgba(5, 8, 13, 0.5);
+      color: #fff;
       font-size: 14px;
       pointer-events: none;
-      z-index: 10;
     }
+
+    #loading[hidden] { display: none; }
 
     #countryCard {
       position: fixed;
+      z-index: 30;
       left: 12px;
       right: 12px;
       bottom: 12px;
       display: none;
       padding: 12px 14px;
+      border: 1px solid rgba(255,255,255,.08);
       border-radius: 14px;
-      background: rgba(20, 25, 31, 0.96);
-      color: white;
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-      z-index: 20;
+      background: var(--panel);
+      box-shadow: 0 10px 32px rgba(0,0,0,.35);
+      backdrop-filter: blur(8px);
+      pointer-events: none;
     }
 
     #countryName {
       font-size: 16px;
-      font-weight: 700;
+      font-weight: 750;
     }
 
-    #countryCode {
-      margin-top: 3px;
+    #countryMeta {
+      margin-top: 4px;
       font-size: 12px;
-      opacity: 0.68;
+      color: rgba(255,255,255,.68);
     }
 
-    #hoverLabel {
+    #errorBox {
       position: fixed;
+      z-index: 40;
+      inset: auto 12px 12px;
       display: none;
-      pointer-events: none;
-      padding: 6px 9px;
-      border-radius: 8px;
-      background: rgba(15, 20, 25, 0.92);
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(120, 25, 25, .94);
       color: white;
-      font-size: 12px;
-      z-index: 30;
-      transform: translate(10px, 10px);
-    }
-
-    .cesium-viewer-bottom {
-      font-size: 10px;
+      font-size: 13px;
     }
   </style>
 </head>
 
 <body>
-  <div id="cesiumContainer"></div>
-  <div id="loading">Ülke sınırları yükleniyor…</div>
-  <div id="hoverLabel"></div>
+  <div id="globe"></div>
+  <div id="loading">Dünya haritası yükleniyor…</div>
 
   <div id="countryCard">
     <div id="countryName">Ülke</div>
-    <div id="countryCode"></div>
+    <div id="countryMeta"></div>
   </div>
 
+  <div id="errorBox">Harita verileri yüklenemedi.</div>
+
   <script>
-    const OCEAN_COLOR = Cesium.Color.fromCssColorString("#176B87");
-    const DEFAULT_COLOR = Cesium.Color.fromCssColorString("#68727C");
-    const VISITED_COLOR = Cesium.Color.fromCssColorString("#20C05C");
-    const HOVER_COLOR = Cesium.Color.fromCssColorString("#9AA6B2");
-    const BORDER_COLOR = Cesium.Color.fromCssColorString("#E4E9ED");
+    (() => {
+      "use strict";
 
-    const urlParams = new URLSearchParams(window.location.search);
+      const COLORS = {
+        ocean: "#176b87",
+        land: "#68727c",
+        visited: "#20c05c",
+        hover: "#9aa6b2",
+        border: "rgba(255,255,255,0.92)"
+      };
 
-    const visitedCodes = new Set(
-      (urlParams.get("visited") || "")
-        .split(",")
-        .map(code => code.trim().toUpperCase())
-        .filter(Boolean)
-    );
+      const params = new URLSearchParams(window.location.search);
 
-    const viewer = new Cesium.Viewer("cesiumContainer", {
-      animation: false,
-      timeline: false,
-      geocoder: false,
-      homeButton: false,
-      sceneModePicker: false,
-      navigationHelpButton: false,
-      fullscreenButton: false,
-      infoBox: false,
-      selectionIndicator: false,
-      baseLayerPicker: false,
-      baseLayer: false,
-      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
-      requestRenderMode: false
-    });
+      const visitedCodes = new Set(
+        (params.get("visited") || "")
+          .split(",")
+          .map(code => code.trim().toUpperCase())
+          .filter(Boolean)
+      );
 
-    viewer.imageryLayers.removeAll();
-    viewer.scene.globe.baseColor = OCEAN_COLOR;
-    viewer.scene.globe.enableLighting = false;
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#06111f");
-    viewer.scene.moon.show = false;
-    viewer.scene.fog.enabled = true;
+      const DATA_URL =
+        "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
 
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(30, 25, 18000000)
-    });
+      const loading = document.getElementById("loading");
+      const errorBox = document.getElementById("errorBox");
+      const countryCard = document.getElementById("countryCard");
+      const countryName = document.getElementById("countryName");
+      const countryMeta = document.getElementById("countryMeta");
 
-    let selectedEntity = null;
-    let hoveredEntity = null;
-    let autoRotate = true;
-    let resumeTimer;
+      let hoveredPolygon = null;
+      let selectedPolygon = null;
 
-    function getProp(entity, names) {
-      for (const name of names) {
-        const prop = entity.properties && entity.properties[name];
-        if (!prop) continue;
-
-        const value = prop.getValue(Cesium.JulianDate.now());
-        if (value !== undefined && value !== null && value !== "") {
-          return value;
+      function firstValue(properties, keys) {
+        for (const key of keys) {
+          const value = properties?.[key];
+          if (value !== undefined && value !== null && String(value).trim() !== "") {
+            return String(value).trim();
+          }
         }
+        return "";
       }
 
-      return "";
-    }
-
-    function getCountryName(entity) {
-      return String(
-        getProp(entity, [
+      function getCountryName(feature) {
+        const p = feature?.properties || {};
+        return firstValue(p, [
           "NAME_TR", "ADMIN", "NAME_LONG", "NAME",
           "name_tr", "admin", "name_long", "name"
-        ]) || "Bilinmeyen ülke"
-      );
-    }
+        ]) || "Bilinmeyen ülke";
+      }
 
-    function getCodeCandidates(entity) {
-      const values = [
-        getProp(entity, ["ISO_A2", "iso_a2"]),
-        getProp(entity, ["ADM0_A3", "adm0_a3"]),
-        getProp(entity, ["ISO_A3", "iso_a3"]),
-        getProp(entity, ["SOV_A3", "sov_a3"]),
-        getProp(entity, ["GU_A3", "gu_a3"])
-      ];
+      function getCountryCodes(feature) {
+        const p = feature?.properties || {};
 
-      return values
-        .map(value => String(value || "").toUpperCase())
-        .filter(value => value && value !== "-99");
-    }
+        return [
+          firstValue(p, ["ISO_A2", "iso_a2"]),
+          firstValue(p, ["ADM0_A3", "adm0_a3"]),
+          firstValue(p, ["ISO_A3", "iso_a3"]),
+          firstValue(p, ["SOV_A3", "sov_a3"]),
+          firstValue(p, ["GU_A3", "gu_a3"])
+        ]
+          .map(code => code.toUpperCase())
+          .filter(code => code && code !== "-99");
+      }
 
-    function getCountryCode(entity) {
-      return getCodeCandidates(entity)[0] || "";
-    }
+      function getPrimaryCode(feature) {
+        return getCountryCodes(feature)[0] || "";
+      }
 
-    function isVisited(entity) {
-      return getCodeCandidates(entity)
-        .some(code => visitedCodes.has(code));
-    }
+      function isVisited(feature) {
+        return getCountryCodes(feature).some(code => visitedCodes.has(code));
+      }
 
-    function setMaterial(entity, color) {
-      entity.polygon.fill = true;
-      entity.polygon.material = new Cesium.ColorMaterialProperty(color);
-    }
+      function polygonColor(feature) {
+        if (feature === hoveredPolygon) return COLORS.hover;
+        return isVisited(feature) ? COLORS.visited : COLORS.land;
+      }
 
-    function applyEntityStyle(entity) {
-      if (!entity || !entity.polygon) return;
-
-      setMaterial(
-        entity,
-        isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR
-      );
-
-      entity.polygon.outline = true;
-      entity.polygon.outlineColor = BORDER_COLOR;
-      entity.polygon.outlineWidth = 1.5;
-    }
-
-    const countriesUrl =
-      "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
-
-    Cesium.GeoJsonDataSource.load(countriesUrl, {
-      clampToGround: false
-    })
-      .then((dataSource) => {
-        viewer.dataSources.add(dataSource);
-
-        for (const entity of dataSource.entities.values) {
-          if (!entity.polygon) continue;
-
-          // Ülke dolgularını kürenin biraz üzerine çıkarır.
-          // Böylece renkler görünür kalır, ancak clampToGround kaynaklı
-          // kaybolan ülke geometrileri oluşmaz.
-          entity.polygon.height = 1000;
-
-          applyEntityStyle(entity);
-        }
-
-        document.getElementById("loading").style.display = "none";
+      const globe = new Globe(document.getElementById("globe"), {
+        animateIn: false,
+        waitForGlobeReady: true
       })
-      .catch((error) => {
-        console.error("GeoJSON yükleme hatası:", error);
-        document.getElementById("loading").textContent =
-          "Ülke sınırları yüklenemedi.";
-      });
+        .backgroundColor("rgba(0,0,0,0)")
+        .showAtmosphere(true)
+        .atmosphereColor("#58c7e8")
+        .atmosphereAltitude(0.16)
+        .showGraticules(false)
+        .polygonsTransitionDuration(0)
+        .polygonAltitude(0.006)
+        .polygonCapColor(polygonColor)
+        .polygonSideColor(() => "rgba(70,80,90,0.85)")
+        .polygonStrokeColor(() => COLORS.border)
+        .polygonLabel(feature => {
+          const name = getCountryName(feature);
+          const code = getPrimaryCode(feature);
+          const status = isVisited(feature) ? "Ziyaret edildi" : "Ziyaret edilmedi";
 
-    function pauseAutoRotate() {
-      autoRotate = false;
-      clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(() => autoRotate = true, 4000);
-    }
+          return `
+            <div style="
+              padding:7px 9px;
+              border-radius:8px;
+              background:rgba(15,20,25,.94);
+              color:#fff;
+              font-family:Arial,sans-serif;
+              font-size:12px;
+              box-shadow:0 6px 20px rgba(0,0,0,.3)">
+              <b>${name}</b><br>
+              <span style="opacity:.68">${code} · ${status}</span>
+            </div>`;
+        })
+        .onPolygonHover(feature => {
+          hoveredPolygon = feature || null;
+          document.body.style.cursor = feature ? "pointer" : "default";
 
-    const canvas = viewer.scene.canvas;
+          // Accessor fonksiyonunu yeniden çalıştırarak sadece renkleri günceller.
+          globe.polygonCapColor(globe.polygonCapColor());
+        })
+        .onPolygonClick(feature => {
+          selectedPolygon = feature || null;
 
-    ["pointerdown", "wheel", "touchstart"].forEach((eventName) => {
-      canvas.addEventListener(eventName, pauseAutoRotate, { passive: true });
-    });
+          if (!selectedPolygon) {
+            countryCard.style.display = "none";
+            return;
+          }
 
-    viewer.clock.onTick.addEventListener(() => {
-      if (autoRotate) {
-        viewer.scene.camera.rotate(
-          Cesium.Cartesian3.UNIT_Z,
-          -0.00035
+          countryName.textContent = getCountryName(selectedPolygon);
+          countryMeta.textContent =
+            `${getPrimaryCode(selectedPolygon)} · ${
+              isVisited(selectedPolygon) ? "Ziyaret edildi" : "Ziyaret edilmedi"
+            }`;
+
+          countryCard.style.display = "block";
+        });
+
+      // Küre yüzeyini düz mavi yapar.
+      globe.globeMaterial().color.set(COLORS.ocean);
+      globe.globeMaterial().emissive.set(COLORS.ocean);
+      globe.globeMaterial().emissiveIntensity = 0.18;
+      globe.globeMaterial().shininess = 12;
+
+      // Mobil/WebView için kontrollü kamera davranışı.
+      const controls = globe.controls();
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.45;
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minDistance = 130;
+      controls.maxDistance = 430;
+
+      globe.pointOfView({ lat: 18, lng: 25, altitude: 2.15 }, 0);
+
+      function resize() {
+        globe.width(window.innerWidth);
+        globe.height(window.innerHeight);
+      }
+
+      resize();
+      window.addEventListener("resize", resize);
+
+      fetch(DATA_URL, { cache: "force-cache" })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`GeoJSON HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (!data?.features?.length) {
+            throw new Error("GeoJSON içinde ülke verisi bulunamadı.");
+          }
+
+          globe.polygonsData(data.features);
+          loading.hidden = true;
+        })
+        .catch(error => {
+          console.error("CountryMeter globe error:", error);
+          loading.hidden = true;
+          errorBox.style.display = "block";
+        });
+
+      // Kullanıcı dokunduğunda dönüşü durdur, birkaç saniye sonra devam ettir.
+      let resumeTimer;
+
+      function pauseRotation() {
+        controls.autoRotate = false;
+        clearTimeout(resumeTimer);
+        resumeTimer = setTimeout(() => {
+          controls.autoRotate = true;
+        }, 3500);
+      }
+
+      ["pointerdown", "wheel", "touchstart"].forEach(eventName => {
+        document.getElementById("globe").addEventListener(
+          eventName,
+          pauseRotation,
+          { passive: true }
         );
-      }
-    });
-
-    const handler =
-      new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-
-    const hoverLabel = document.getElementById("hoverLabel");
-    const countryCard = document.getElementById("countryCard");
-    const countryName = document.getElementById("countryName");
-    const countryCode = document.getElementById("countryCode");
-
-    handler.setInputAction((movement) => {
-      const picked = viewer.scene.pick(movement.endPosition);
-      const entity = Cesium.defined(picked) ? picked.id : null;
-
-      if (hoveredEntity && hoveredEntity !== selectedEntity) {
-        applyEntityStyle(hoveredEntity);
-      }
-
-      hoveredEntity =
-        entity && entity.polygon ? entity : null;
-
-      if (hoveredEntity && hoveredEntity !== selectedEntity) {
-        setMaterial(hoveredEntity, HOVER_COLOR);
-        hoverLabel.textContent = getCountryName(hoveredEntity);
-        hoverLabel.style.display = "block";
-        hoverLabel.style.left = movement.endPosition.x + "px";
-        hoverLabel.style.top = movement.endPosition.y + "px";
-      } else {
-        hoverLabel.style.display = "none";
-      }
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-    handler.setInputAction((click) => {
-      const picked = viewer.scene.pick(click.position);
-      const entity = Cesium.defined(picked) ? picked.id : null;
-
-      if (!entity || !entity.polygon) {
-        countryCard.style.display = "none";
-        selectedEntity = null;
-        return;
-      }
-
-      if (selectedEntity && selectedEntity !== entity) {
-        applyEntityStyle(selectedEntity);
-      }
-
-      selectedEntity = entity;
-      countryName.textContent = getCountryName(entity);
-      countryCode.textContent = getCountryCode(entity);
-      countryCard.style.display = "block";
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      });
+    })();
   </script>
 </body>
 </html>
