@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>CountryMeter Globe v9</title>
+  <title>CountryMeter Globe</title>
 
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.143/Build/Cesium/Cesium.js"></script>
   <link rel="stylesheet"
@@ -45,8 +45,16 @@
       z-index: 20;
     }
 
-    #countryName { font-size: 16px; font-weight: 700; }
-    #countryCode { margin-top: 3px; font-size: 12px; opacity: 0.68; }
+    #countryName {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    #countryCode {
+      margin-top: 3px;
+      font-size: 12px;
+      opacity: 0.68;
+    }
 
     #hoverLabel {
       position: fixed;
@@ -61,7 +69,9 @@
       transform: translate(10px, 10px);
     }
 
-    .cesium-viewer-bottom { font-size: 10px; }
+    .cesium-viewer-bottom {
+      font-size: 10px;
+    }
   </style>
 </head>
 
@@ -83,6 +93,7 @@
     const BORDER_COLOR = Cesium.Color.fromCssColorString("#E4E9ED");
 
     const urlParams = new URLSearchParams(window.location.search);
+
     const visitedCodes = new Set(
       (urlParams.get("visited") || "")
         .split(",")
@@ -126,17 +137,23 @@
       for (const name of names) {
         const prop = entity.properties && entity.properties[name];
         if (!prop) continue;
+
         const value = prop.getValue(Cesium.JulianDate.now());
-        if (value !== undefined && value !== null && value !== "") return value;
+        if (value !== undefined && value !== null && value !== "") {
+          return value;
+        }
       }
+
       return "";
     }
 
     function getCountryName(entity) {
-      return String(getProp(entity, [
-        "NAME_TR", "ADMIN", "NAME_LONG", "NAME",
-        "name_tr", "admin", "name_long", "name"
-      ]) || "Bilinmeyen ülke");
+      return String(
+        getProp(entity, [
+          "NAME_TR", "ADMIN", "NAME_LONG", "NAME",
+          "name_tr", "admin", "name_long", "name"
+        ]) || "Bilinmeyen ülke"
+      );
     }
 
     function getCodeCandidates(entity) {
@@ -158,31 +175,23 @@
     }
 
     function isVisited(entity) {
-      const codes = getCodeCandidates(entity);
-
-  console.log(
-    getCountryName(entity),
-    codes,
-    codes.some(code => visitedCodes.has(code))
-  );
-
-  return codes.some(code => visitedCodes.has(code));
-}
+      return getCodeCandidates(entity)
+        .some(code => visitedCodes.has(code));
+    }
 
     function setMaterial(entity, color) {
       entity.polygon.fill = true;
-      entity.polygon.material = color;
+      entity.polygon.material = new Cesium.ColorMaterialProperty(color);
     }
 
     function applyEntityStyle(entity) {
       if (!entity || !entity.polygon) return;
 
-      setMaterial(entity, isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR);
-      console.log(
-  getCountryName(entity),
-  isVisited(entity),
-  entity.polygon.material
-);
+      setMaterial(
+        entity,
+        isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR
+      );
+
       entity.polygon.outline = true;
       entity.polygon.outlineColor = BORDER_COLOR;
       entity.polygon.outlineWidth = 1.5;
@@ -192,22 +201,29 @@
       "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
 
     Cesium.GeoJsonDataSource.load(countriesUrl, {
-      clampToGround: true
-    }).then((dataSource) => {
-      viewer.dataSources.add(dataSource);
+      clampToGround: false
+    })
+      .then((dataSource) => {
+        viewer.dataSources.add(dataSource);
 
-      for (const entity of dataSource.entities.values) {
-        if (!entity.polygon) continue;
+        for (const entity of dataSource.entities.values) {
+          if (!entity.polygon) continue;
 
-        applyEntityStyle(entity);
-      }
+          // Ülke dolgularını kürenin biraz üzerine çıkarır.
+          // Böylece renkler görünür kalır, ancak clampToGround kaynaklı
+          // kaybolan ülke geometrileri oluşmaz.
+          entity.polygon.height = 1000;
 
-      document.getElementById("loading").style.display = "none";
-    }).catch((error) => {
-      console.error("GeoJSON yükleme hatası:", error);
-      document.getElementById("loading").textContent =
-        "Ülke sınırları yüklenemedi.";
-    });
+          applyEntityStyle(entity);
+        }
+
+        document.getElementById("loading").style.display = "none";
+      })
+      .catch((error) => {
+        console.error("GeoJSON yükleme hatası:", error);
+        document.getElementById("loading").textContent =
+          "Ülke sınırları yüklenemedi.";
+      });
 
     function pauseAutoRotate() {
       autoRotate = false;
@@ -216,17 +232,23 @@
     }
 
     const canvas = viewer.scene.canvas;
+
     ["pointerdown", "wheel", "touchstart"].forEach((eventName) => {
       canvas.addEventListener(eventName, pauseAutoRotate, { passive: true });
     });
 
     viewer.clock.onTick.addEventListener(() => {
       if (autoRotate) {
-        viewer.scene.camera.rotate(Cesium.Cartesian3.UNIT_Z, -0.00035);
+        viewer.scene.camera.rotate(
+          Cesium.Cartesian3.UNIT_Z,
+          -0.00035
+        );
       }
     });
 
-    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    const handler =
+      new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
     const hoverLabel = document.getElementById("hoverLabel");
     const countryCard = document.getElementById("countryCard");
     const countryName = document.getElementById("countryName");
@@ -240,7 +262,8 @@
         applyEntityStyle(hoveredEntity);
       }
 
-      hoveredEntity = entity && entity.polygon ? entity : null;
+      hoveredEntity =
+        entity && entity.polygon ? entity : null;
 
       if (hoveredEntity && hoveredEntity !== selectedEntity) {
         setMaterial(hoveredEntity, HOVER_COLOR);
