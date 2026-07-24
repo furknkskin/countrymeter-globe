@@ -171,7 +171,7 @@
 
     function setMaterial(entity, color) {
       entity.polygon.fill = true;
-      entity.polygon.material = new Cesium.ColorMaterialProperty(color);
+      entity.polygon.material = color;
     }
 
     function applyEntityStyle(entity) {
