@@ -178,6 +178,11 @@
       if (!entity || !entity.polygon) return;
 
       setMaterial(entity, isVisited(entity) ? VISITED_COLOR : DEFAULT_COLOR);
+      console.log(
+  getCountryName(entity),
+  isVisited(entity),
+  entity.polygon.material
+);
       entity.polygon.outline = true;
       entity.polygon.outlineColor = BORDER_COLOR;
       entity.polygon.outlineWidth = 1.5;
