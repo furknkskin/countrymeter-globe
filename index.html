@@ -138,7 +138,10 @@
 
     const DATA_URL =
       "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
-
+const CODE_ALIASES = {
+  FRA: "FR",
+  FR1: "FR"
+};
     const loading = document.getElementById("loading");
     const errorBox = document.getElementById("errorBox");
     const countryCard = document.getElementById("countryCard");
@@ -179,19 +182,30 @@
       ]) || "Bilinmeyen ülke";
     }
 
-    function getCountryCodes(feature) {
-      const p = feature?.properties || {};
+   function getCountryCodes(feature) {
+  const p = feature?.properties || {};
 
-      return [
-        firstValue(p, ["ISO_A2", "iso_a2"]),
-        firstValue(p, ["ADM0_A3", "adm0_a3"]),
-        firstValue(p, ["ISO_A3", "iso_a3"]),
-        firstValue(p, ["SOV_A3", "sov_a3"]),
-        firstValue(p, ["GU_A3", "gu_a3"])
-      ]
-        .map(code => code.toUpperCase())
-        .filter(code => code && code !== "-99");
-    }
+  const rawCodes = [
+    firstValue(p, ["ISO_A2", "iso_a2"]),
+    firstValue(p, ["ADM0_A3", "adm0_a3"]),
+    firstValue(p, ["ISO_A3", "iso_a3"]),
+    firstValue(p, ["SOV_A3", "sov_a3"]),
+    firstValue(p, ["GU_A3", "gu_a3"])
+  ]
+    .map(code => code.toUpperCase())
+    .filter(code => code && code !== "-99");
+
+  const normalizedCodes = rawCodes.map(
+    code => CODE_ALIASES[code] || code
+  );
+
+  return [
+    ...new Set([
+      ...normalizedCodes,
+      ...rawCodes
+    ])
+  ];
+}
 
     function getPrimaryCode(feature) {
       return getCountryCodes(feature)[0] || "";
