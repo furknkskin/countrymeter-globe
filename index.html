@@ -182,13 +182,15 @@ const CODE_ALIASES = {
       ]) || "Bilinmeyen ülke";
     }
 
-   function getCountryCodes(feature) {
+  function getCountryCodes(feature) {
   const p = feature?.properties || {};
 
   const rawCodes = [
     firstValue(p, ["ISO_A2", "iso_a2"]),
+    firstValue(p, ["ISO_A2_EH", "iso_a2_eh"]),
     firstValue(p, ["ADM0_A3", "adm0_a3"]),
     firstValue(p, ["ISO_A3", "iso_a3"]),
+    firstValue(p, ["ISO_A3_EH", "iso_a3_eh"]),
     firstValue(p, ["SOV_A3", "sov_a3"]),
     firstValue(p, ["GU_A3", "gu_a3"])
   ]
@@ -201,8 +203,8 @@ const CODE_ALIASES = {
 
   return [
     ...new Set([
-      ...normalizedCodes,
-      ...rawCodes
+      ...rawCodes,
+      ...normalizedCodes
     ])
   ];
 }
@@ -352,7 +354,24 @@ const CODE_ALIASES = {
             "GeoJSON içinde ülke verisi bulunamadı."
           );
         }
+const availableCodes = new Set(
+  data.features.flatMap(feature => getCountryCodes(feature))
+);
 
+const unmatchedCodes = [...visitedCodes].filter(
+  code => !availableCodes.has(code)
+);
+
+if (homeCode && !availableCodes.has(homeCode)) {
+  unmatchedCodes.push(homeCode);
+}
+
+if (unmatchedCodes.length > 0) {
+  console.warn(
+    "CountryMeter eşleşmeyen ülke kodları:",
+    unmatchedCodes
+  );
+}
         globe.polygonsData(data.features);
         loading.hidden = true;
       })
